@@ -1,8 +1,11 @@
 # Run NanoAODs adding our parT branch
 
 ## Setup environment
+`ssh lxplus8` or access the singularity with `cmssw-el8`
 ```
-cmssw-el8
+git clone --recursive git@github.com:friti/BsTauTau.git
+cd BsTauTau/make_samples/nano_with_part_branch
+
 SCRAM_ARCH=el8_amd64_gcc11
 cmsrel CMSSW_13_0_10
 cd CMSSW_13_0_10/src/
@@ -15,17 +18,20 @@ git cms-addpkg RecoBTag
 ## changes with new parT branches
 git cms-merge-topic -u friti:myParT
 
-scram b -j8 
+scram b -j8
+
+cd ../..
 ```
 
 Now we need to copy the model in the right directory
 ```
-cp <path_model>.onnx /afs/cern.ch/work/f/friti/BsTauTau/make_samples/nano_with_part_branch/CMSSW_13_0_10/model/.
-cp <path_json>.json /afs/cern.ch/work/f/friti/BsTauTau/make_samples/nano_with_part_branch/CMSSW_13_0_10/model/.
+mkdir CMSSW_13_0_10/model/data
+cp model_6026222.onnx CMSSW_13_0_10/model/data/.
+cp preprocess.json CMSSW_13_0_10/model/data/.
 ```
 
 ## Send jobs on CRAB
-Use the `multisubmitter_crab.py` and `submit_on_crab_template.py`.
+Use the `multisubmitter_crab_data.py` and `multisubmitter_crab_mc.py` `submit_on_crab_template.py`.
 Since these are many and big jobs, crab is better.
 
 ## Send jobs on CONDOR
