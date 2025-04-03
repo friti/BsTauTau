@@ -29,8 +29,12 @@ mkdir CMSSW_13_0_10/model/data
 cp model_6026222.onnx CMSSW_13_0_10/model/data/.
 cp preprocess.json CMSSW_13_0_10/model/data/.
 ```
+To test it locally
+```
+cmsRun Run18_106X_step5Nano_13010_cfg.py
+```
 
-## Send jobs on CRAB
+## Send jobs on CRAB (RECOMMENDED)
 Use the `multisubmitter_crab_data.py` and `multisubmitter_crab_mc.py` `submit_on_crab_template.py`.
 Since these are many and big jobs, crab is better.
 
