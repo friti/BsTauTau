@@ -16,7 +16,7 @@ git cms-addpkg PhysicsTools/PatAlgos
 git cms-addpkg RecoBTag
 
 ## changes with new parT branches
-git cms-merge-topic -u friti:myParT
+git cms-merge-topic -u friti:myPart
 
 scram b -j8
 
@@ -25,9 +25,9 @@ cd ../..
 
 Now we need to copy the model in the right directory
 ```
-mkdir CMSSW_13_0_10/model/data
-cp model_6026222.onnx CMSSW_13_0_10/model/data/.
-cp preprocess.json CMSSW_13_0_10/model/data/.
+mkdir CMSSW_13_0_10/src/data
+cp model_6026222.onnx CMSSW_13_0_10/src/data/.
+cp preprocess.json CMSSW_13_0_10/src/data/.
 ```
 To test it locally
 ```
