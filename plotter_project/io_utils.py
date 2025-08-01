@@ -6,12 +6,53 @@ from weights import *
 
 
 def make_directories_for_plots(label, channels):
-    """Create directories for storing plots."""
+    """Create directories for storing plots in multiple formats and versions."""
     for ch in channels:
-        os.system('mkdir -p plots/%s/%s/png/' %(label,ch))
-        os.system('mkdir -p plots/%s/%s/pdf/' %(label,ch))
-        os.system('mkdir -p plots/%s/%s/flavor/png/' %(label,ch))
-        os.system('mkdir -p plots/%s/%s/flavor/pdf/' %(label,ch))
+        # Sample-based plots
+        ## BsTauTau scaled
+        os.system('mkdir -p plots/%s/%s/samples_based/bstautau_scaled/log/png/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/samples_based/bstautau_scaled/log/pdf/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/samples_based/bstautau_scaled/log/C/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/samples_based/bstautau_scaled/log/root/' %(label,ch))
+        
+        os.system('mkdir -p plots/%s/%s/samples_based/bstautau_scaled/lin/png/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/samples_based/bstautau_scaled/lin/pdf/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/samples_based/bstautau_scaled/lin/C/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/samples_based/bstautau_scaled/lin/root/' %(label,ch))
+        
+        ## BsTauTau not scaled
+        os.system('mkdir -p plots/%s/%s/samples_based/bstautau_not_scaled/log/png/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/samples_based/bstautau_not_scaled/log/pdf/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/samples_based/bstautau_not_scaled/log/C/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/samples_based/bstautau_not_scaled/log/root/' %(label,ch))
+        
+        os.system('mkdir -p plots/%s/%s/samples_based/bstautau_not_scaled/lin/png/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/samples_based/bstautau_not_scaled/lin/pdf/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/samples_based/bstautau_not_scaled/lin/C/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/samples_based/bstautau_not_scaled/lin/root/' %(label,ch))
+        
+        # Flavor-based plots
+        ## BsTauTau scaled
+        os.system('mkdir -p plots/%s/%s/flavor_based/bstautau_scaled/log/png/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/flavor_based/bstautau_scaled/log/pdf/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/flavor_based/bstautau_scaled/log/C/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/flavor_based/bstautau_scaled/log/root/' %(label,ch))
+        
+        os.system('mkdir -p plots/%s/%s/flavor_based/bstautau_scaled/lin/png/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/flavor_based/bstautau_scaled/lin/pdf/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/flavor_based/bstautau_scaled/lin/C/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/flavor_based/bstautau_scaled/lin/root/' %(label,ch))
+        
+        ## BsTauTau not scaled
+        os.system('mkdir -p plots/%s/%s/flavor_based/bstautau_not_scaled/log/png/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/flavor_based/bstautau_not_scaled/log/pdf/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/flavor_based/bstautau_not_scaled/log/C/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/flavor_based/bstautau_not_scaled/log/root/' %(label,ch))
+        
+        os.system('mkdir -p plots/%s/%s/flavor_based/bstautau_not_scaled/lin/png/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/flavor_based/bstautau_not_scaled/lin/pdf/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/flavor_based/bstautau_not_scaled/lin/C/' %(label,ch))
+        os.system('mkdir -p plots/%s/%s/flavor_based/bstautau_not_scaled/lin/root/' %(label,ch))
 
 def load_mc_samples(ch, mc_samples_names, files_names, tree_name, tree_dir_mc, tree_dir_wsfs, tree_dir_btag_sfs, luminosity_2018, cross_sections, trigger_selections, use_ntuples_with_sfs, compute_btag_sfs, use_ntuples_with_btag_sfs, part_samples, nevents = None):
     """Load MC samples, apply weights, and trigger selections."""
@@ -19,6 +60,9 @@ def load_mc_samples(ch, mc_samples_names, files_names, tree_name, tree_dir_mc, t
     if compute_btag_sfs or use_ntuples_with_sfs:
         print("Computing b-tagging scale factors, loading from:", tree_dir_wsfs)
         tree_dir_mc = tree_dir_wsfs
+    if use_ntuples_with_btag_sfs:
+        print("Using b-tagging scale factors, loading from:", tree_dir_btag_sfs)
+        tree_dir_mc = tree_dir_btag_sfs
 
     for k in mc_samples_names:
         file_name = files_names[k]
@@ -31,7 +75,7 @@ def load_mc_samples(ch, mc_samples_names, files_names, tree_name, tree_dir_mc, t
             mc_samples[k] = ROOT.RDataFrame(tree_name, f'{tree_dir_mc}/{file_name}.root').Range(nevents)
         
         # Apply weight normalization if necessary
-        if not compute_btag_sfs and not use_ntuples_with_sfs:
+        if not compute_btag_sfs and not use_ntuples_with_sfs and not use_ntuples_with_btag_sfs:
             norm_weight = luminosity_2018 * cross_sections[k] * 1000 / get_genEventSumw(f'{tree_dir_mc}/{file_name}.root')
             if part_samples:
                 mc_samples[k] = mc_samples[k].Define('norm_weight', f'L1PreFiringWeight_Nom*genWeight*puWeight*{norm_weight}')

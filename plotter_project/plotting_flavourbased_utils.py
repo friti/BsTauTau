@@ -1,6 +1,7 @@
 import ROOT
 from samples import data_samples_names
 from plotting_utils import set_histogram_style, CMS_lumi, compute_ratio_plot, officialStyle, draw_stat, style_and_draw_bstautau
+from blinding_utils import apply_data_blinding_to_histogram, should_apply_blinding
 
 def initialize_flavor_histograms(histos, samples, ch):
     """Initialize histograms categorized by jet flavor - MAXIMUM EFFICIENCY VERSION."""
@@ -165,7 +166,7 @@ def style_flavor_histograms(temp_hists, k, v):
     
     return maxima, maxima_data
 
-def create_flavor_histogram_stacks(temp_hists, k, maxima_data, maxima):
+def create_flavor_histogram_stacks(temp_hists, k, maxima_data, maxima, blinding):
     """Create histogram stacks for flavor-based histograms - OPTIMIZED VERSION."""
     ths1 = ROOT.THStack('flavor_stack', '')
     data_ths = ROOT.THStack('data_stack', '')
@@ -191,6 +192,11 @@ def create_flavor_histogram_stacks(temp_hists, k, maxima_data, maxima):
             continue
         if hasattr(ihist, 'GetValue'):
             ihist = ihist.GetValue()
+        
+        # Apply blinding to data histograms for ParTRaw plots
+        if should_apply_blinding(k) and blinding :
+            apply_data_blinding_to_histogram(ihist, k)
+        
         ihist.SetLineWidth(2)
         ihist.SetMarkerStyle(20)
         data_ths.Add(ihist)
@@ -223,8 +229,88 @@ def style_and_draw_bstautau(temp_hists, k, data_ths, colours):
             hist.Draw("hist same")
             hist.Draw("EP same")
 
-def process_flavor_histograms(histos, temp_hists, ch, label, main_pad, ratio_pad, c1, colours):
+def save_flavor_plot_versions(c1, label, ch, k, main_pad):
+    """
+    Save flavor plots in multiple formats and versions with new directory structure.
+    
+    Args:
+        c1: Canvas
+        label: Timestamp label
+        ch: Channel
+        k: Histogram name
+        main_pad: Main pad for log/linear versions
+    """
+    # For now, flavor plots will go to both scaled and unscaled directories
+    # since flavor plots don't typically have BsTauTau scaling differences
+    base_paths = [
+        f'plots/{label}/{ch}/flavor_based/bstautau_scaled',
+        f'plots/{label}/{ch}/flavor_based/bstautau_not_scaled'
+    ]
+    
+    for base_path in base_paths:
+        # Linear version
+        main_pad.SetLogy(False)
+        c1.Modified()
+        c1.Update()
+        
+        # Save linear versions in all formats
+        c1.SaveAs(f'{base_path}/lin/pdf/{k}_flavor.pdf')
+        c1.SaveAs(f'{base_path}/lin/png/{k}_flavor.png')
+        c1.SaveAs(f'{base_path}/lin/C/{k}_flavor.C')
+        c1.SaveAs(f'{base_path}/lin/root/{k}_flavor.root')
+        
+        # Log version - need to adjust maximum to avoid overlap with legend
+        main_pad.SetLogy(True)
+        
+        # Get all drawable objects from the main pad to find the maximum
+        current_max = 0
+        pad_primitives = main_pad.GetListOfPrimitives()
+        for obj in pad_primitives:
+            if hasattr(obj, 'GetMaximum'):
+                obj_max = obj.GetMaximum()
+                if obj_max > current_max:
+                    current_max = obj_max
+            elif hasattr(obj, 'GetStack') and obj.GetStack():
+                # For THStack objects
+                stack_max = obj.GetStack().Last().GetMaximum()
+                if stack_max > current_max:
+                    current_max = stack_max
+        
+        # Set maximum to 1000 times the current maximum for log scale
+        log_max = current_max * 1000
+        for obj in pad_primitives:
+            if hasattr(obj, 'SetMaximum'):
+                obj.SetMaximum(log_max)
+        
+        c1.Modified()
+        c1.Update()
+        
+        # Save log versions in all formats
+        c1.SaveAs(f'{base_path}/log/pdf/{k}_flavor.pdf')
+        c1.SaveAs(f'{base_path}/log/png/{k}_flavor.png')
+        c1.SaveAs(f'{base_path}/log/C/{k}_flavor.C')
+        c1.SaveAs(f'{base_path}/log/root/{k}_flavor.root')
+        
+        # Reset to linear for consistency and restore original maximum
+        main_pad.SetLogy(False)
+        for obj in pad_primitives:
+            if hasattr(obj, 'SetMaximum'):
+                obj.SetMaximum(current_max)
+    
+    c1.Modified()
+    c1.Update()
+
+def process_flavor_histograms(histos, temp_hists, ch, label, main_pad, ratio_pad, c1, colours, blinding):
     """Process and save flavor-based histograms - OPTIMIZED."""
+    
+    # Create ROOT file for saving flavor histograms with compression
+    root_file_path = f'plots/{label}/histograms_flavor.root'
+    root_file = ROOT.TFile(root_file_path, 'UPDATE', "", ROOT.kLZMA)  # Use LZMA compression
+    root_file.SetCompressionLevel(1)  # Fast compression
+    print(f"Created flavor ROOT file: {root_file_path}")
+    
+    # Create channel folder in ROOT file
+    channel_folder = root_file.mkdir(ch)
     
     # Pre-compute all histograms at once to minimize RDataFrame overhead
     print(f"Computing all flavor histograms for channel {ch}...")
@@ -233,8 +319,7 @@ def process_flavor_histograms(histos, temp_hists, ch, label, main_pad, ratio_pad
         computed_histos[k] = compute_and_combine_flavor_histograms(temp_hists, k)
     
     # Now process each histogram for plotting
-    for k, v in histos[ch].items():
-        print(f"Plotting flavor histogram {k} for channel {ch}")
+    for i, (k, v) in enumerate(histos[ch].items()):
         
         c1.cd()
         main_pad.cd()
@@ -246,7 +331,7 @@ def process_flavor_histograms(histos, temp_hists, ch, label, main_pad, ratio_pad
         # Create legend after histograms are computed
         leg = create_flavor_legend(temp_hists, ch)
         
-        ths1, data_ths = create_flavor_histogram_stacks(temp_hists, k, maxima_data, maxima)
+        ths1, data_ths = create_flavor_histogram_stacks(temp_hists, k, maxima_data, maxima, blinding)
         ths1.Draw('hist')
         ths1.GetXaxis().SetTitle(v[1])
         ths1.GetYaxis().SetTitle('events')
@@ -281,5 +366,52 @@ def process_flavor_histograms(histos, temp_hists, ch, label, main_pad, ratio_pad
         c1.Modified()
         c1.Update()
         
-        c1.SaveAs(f'plots/{label}/{ch}/flavor/pdf/{k}_flavor.pdf')
-        c1.SaveAs(f'plots/{label}/{ch}/flavor/png/{k}_flavor.png')
+        # Save plots in all formats and versions
+        save_flavor_plot_versions(c1, label, ch, k, main_pad)
+
+        # Save flavor histograms to ROOT file
+        save_flavor_histograms_to_root_file(channel_folder, k, ths1, data_ths, temp_hists)
+
+    # Close the ROOT file
+    root_file.Close()
+    print(f"Flavor ROOT file saved: {root_file_path}")
+
+
+def save_flavor_histograms_to_root_file(channel_folder, histogram_name, ths1, data_ths, temp_hists):
+    """
+    Save flavor-based histograms to ROOT file with proper folder structure.
+    
+    Args:
+        channel_folder: ROOT directory for the channel
+        histogram_name: Name of the histogram (k)
+        ths1: Flavor stack (combined b, c, tau, other jets)
+        data_ths: Data stack
+        temp_hists: Dictionary containing all histograms
+    """
+    # Create subfolder for this histogram
+    histo_folder = channel_folder.mkdir(histogram_name)
+    histo_folder.cd()
+    
+    # Save flavor stack (total background)
+    if ths1.GetStack() and ths1.GetStack().Last():
+        flavor_total = ths1.GetStack().Last().Clone(f"{histogram_name}_flavor_total")
+        flavor_total.Write("ths1")
+    
+    # Save data
+    if data_ths.GetStack() and data_ths.GetStack().Last():
+        data_hist = data_ths.GetStack().Last().Clone(f"{histogram_name}_data")
+        data_hist.Write("data")
+    
+    # Save bstautau signal if present
+    if f'{histogram_name}_bstautau' in temp_hists[histogram_name]:
+        bstautau_hist = temp_hists[histogram_name][f'{histogram_name}_bstautau'].Clone(f"{histogram_name}_bstautau")
+        bstautau_hist.Write("bstautau")
+    
+    # Save individual flavor categories
+    flavor_categories = ['b_jets', 'c_jets', 'tau_jets', 'other_jets']
+    for flavor in flavor_categories:
+        key = f'{histogram_name}_{flavor}'
+        if key in temp_hists[histogram_name]:
+            flavor_hist = temp_hists[histogram_name][key].Clone(f"{histogram_name}_{flavor}")
+            flavor_hist.Write(flavor)
+    

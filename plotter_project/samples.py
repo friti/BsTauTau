@@ -71,7 +71,7 @@ cross_sections = {
     "st_antit": 26.38,         # in pb  # CHECKKK
     "st_tw": 35.85,            # in pb  # CHECKKK
     "st_antitw": 35.85,        # in pb  # CHECKKK
-    "bstautau": 830 * 2 * 0.1 * 6.8 * 0.001 *10,        ## 10 random!
+    "bstautau": 830 * 2 * 0.1 * 6.8 * 0.001 *10,        ## 10 times LHCb
 }
 
 

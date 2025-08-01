@@ -2,8 +2,10 @@ import ROOT
 from definition_cpp_functions import *
 
 
-jet_attributes = [
-        "pt", "eta", "phi", "m", "puid", "jetid", "deepflavB", "hadronFlavour","ParTRawB", "ParTRawC", "ParTRawOther", "ParTRawSingletau",
+jet_attributes_global = [
+        "pt", "eta", "phi", "m", "puid", "jetid", "deepflavB", "hadronFlavour"]
+
+jet_attributes_part = ["ParTRawB", "ParTRawC", "ParTRawOther", "ParTRawSingletau",
         "ParTRawTauhtaue", "ParTRawTauhtauh", "ParTRawTauhtaumu"]
 
 # Define b-tagging thresholds
@@ -58,10 +60,15 @@ def define_bstautau_taudecaymodes_mask(samples):
     return samples
 
 
-def define_jets_with_minimum_selection(samples, minimum_jet_conditions):
+def define_jets_with_minimum_selection(samples, minimum_jet_conditions, part_samples):
     """Function to define jet-related branches."""
 
     # Define branches for each jet attribute
+    if part_samples:
+        jet_attributes = jet_attributes_global + jet_attributes_part
+    else:
+        jet_attributes = jet_attributes_global
+
     for attr in jet_attributes:
         samples = samples.Define(f"selected_jets_{attr}", f"j_{attr}[{minimum_jet_conditions}]")
 
@@ -70,9 +77,14 @@ def define_jets_with_minimum_selection(samples, minimum_jet_conditions):
 
     return samples
 
-def define_jets_with_minimum_selection_for_histos(samples, is_bstautau, bstautau_conditions):
+def define_jets_with_minimum_selection_for_histos(samples, is_bstautau, bstautau_conditions, part_samples):
 
     '''Prepare branches selected for bstautau specific case (only jets matching with bs->tautau)'''
+    if part_samples:
+        jet_attributes = jet_attributes_global + jet_attributes_part
+    else:
+        jet_attributes = jet_attributes_global
+
     if is_bstautau:
         for attr in jet_attributes:
             samples = samples.Define(f"selected_jets_for_histo_{attr}", f"selected_jets_{attr}[{bstautau_conditions['general']}]")
@@ -84,16 +96,19 @@ def define_jets_with_minimum_selection_for_histos(samples, is_bstautau, bstautau
 
     samples = samples.Define("selected_jets_for_histo_njets", "selected_jets_for_histo_pt.size()")
 
-    print("is_bstautau:", is_bstautau)
-
     return samples
 
 
-def define_jets_with_btagging_selection(samples):
+def define_jets_with_btagging_selection(samples, part_samples):
     """Function to define b-tagging conditions with descriptive names."""
     
     # Define pt thresholds
     pt_thresholds = [10, 20, 30]
+
+    if part_samples:
+        jet_attributes = jet_attributes_global + jet_attributes_part
+    else:
+        jet_attributes = jet_attributes_global
 
     # Define b-tagging conditions for medium and loose thresholds
     for btag_level, btag_value in btag_thresholds.items():
