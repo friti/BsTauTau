@@ -130,12 +130,27 @@ def define_jets_with_btagging_selection(samples, part_samples):
         for attr in jet_attributes:
             samples = samples.Define(f"btagged_{btag_level}_jets_for_histo_{attr}", f"selected_jets_for_histo_{attr}[selected_jets_for_histo_deepflavB > {btag_value}]")
            
-            # Add pt thresholds
+            # Add pt thresholds - sort by pT and take top 2 jets
             for pt in pt_thresholds:
+                # First create the filtered collection
+                filtered_attr = f"btagged_{btag_level}_jets_pt_above_{pt}_filtered_{attr}"
                 samples = samples.Define(
-                    f"btagged_{btag_level}_jets_pt_above_{pt}_for_histo_{attr}",
+                    filtered_attr,
                     f"selected_jets_for_histo_{attr}[selected_jets_for_histo_deepflavB > {btag_value} & selected_jets_for_histo_pt > {pt}]"
                 )
+                
+                # Then sort by pT and take top 2
+                if attr == 'pt':
+                    samples = samples.Define(
+                        f"btagged_{btag_level}_jets_pt_above_{pt}_for_histo_{attr}",
+                        f"takeTopNByPt({filtered_attr}, {filtered_attr}, 2)"
+                    )
+                else:
+                    filtered_pt = f"btagged_{btag_level}_jets_pt_above_{pt}_filtered_pt"
+                    samples = samples.Define(
+                        f"btagged_{btag_level}_jets_pt_above_{pt}_for_histo_{attr}",
+                        f"takeTopNByPt({filtered_attr}, {filtered_pt}, 2)"
+                    )
 
         # Define the number of b-tagged jets for each threshold
         for pt in pt_thresholds:
@@ -194,7 +209,23 @@ def load_invmass():
     double compute_mt(double pt, double phi, double met, double met_phi) {
     return sqrt(2 * pt * met * (1 - cos(phi - met_phi)));
     }
-    """);
+    """)
+
+def load_sorting_functions():
+    # Add helper function to sort and take top N jets by pT
+    ROOT.gInterpreter.Declare("""
+    template<typename T>
+    ROOT::VecOps::RVec<T> takeTopNByPt(const ROOT::VecOps::RVec<T>& values, 
+                                       const ROOT::VecOps::RVec<float>& pts, 
+                                       int n = 2) {
+        auto indices = ROOT::VecOps::Argsort(pts, [](float a, float b) { return a > b; });
+        ROOT::VecOps::RVec<T> result;
+        for (int i = 0; i < std::min(n, (int)indices.size()); i++) {
+            result.push_back(values[indices[i]]);
+        }
+        return result;
+    }
+    """)
 
 
 def define_invariant_mass_and_mt(samples,ch):

@@ -66,34 +66,32 @@ def declare_sfs_cpp_functions():
             return sfshisto_emu->GetBinContent(bin_x, bin_y);
         }
     """)
-
     ROOT.gInterpreter.Declare("""
-        TFile* ee_trg_sf_file = nullptr;
-        TH2F* sfshisto_ee = nullptr;
+        TFile* single_e_trg_sf_file = nullptr;
+        TH2F* sfshisto_single_e = nullptr;
 
-        void load_sfshisto_ee() {
-            if (ee_trg_sf_file == nullptr) {
-                ee_trg_sf_file = TFile::Open("sfs/dilepton_trigger_sfs_2018.root", "READ");
-                if (!ee_trg_sf_file || !ee_trg_sf_file->IsOpen()) {
+        void load_sfshisto_single_e() {
+            if (single_e_trg_sf_file == nullptr) {
+                single_e_trg_sf_file = TFile::Open("sfs/electron_trigger_2018.root", "READ");
+                if (!single_e_trg_sf_file || !single_e_trg_sf_file->IsOpen()) {
                     std::cerr << "Error: File not found or unable to open!" << std::endl;
                 }
-                sfshisto_ee = (TH2F*)ee_trg_sf_file->Get("h2D_SF_ee_lepABpt_FullError");
-                if (!sfshisto_ee) {
+                sfshisto_single_e = (TH2F*)single_e_trg_sf_file->Get("EGamma_SF2D");
+                if (!sfshisto_single_e) {
                     std::cerr << "Error: Histogram not found!" << std::endl;
                 }
             }
         }
 
-        double get_ee_trigger_sf(double e1_pt, double e2_pt) {
-            if (sfshisto_ee == nullptr) {
-                load_sfshisto_ee();
+        double get_single_e_trigger_sf(double e1_pt, double e1_eta) {
+            if (sfshisto_single_e == nullptr) {
+                load_sfshisto_single_e();
             }
-            int bin_x = sfshisto_ee->GetXaxis()->FindBin(e1_pt);
-            int bin_y = sfshisto_ee->GetYaxis()->FindBin(e2_pt);
-            return sfshisto_ee->GetBinContent(bin_x, bin_y);
+            int bin_x = sfshisto_single_e->GetXaxis()->FindBin(e1_eta);
+            int bin_y = sfshisto_single_e->GetYaxis()->FindBin(e1_pt);
+            return sfshisto_single_e->GetBinContent(bin_x, bin_y);
         }
     """)
-
     ROOT.gInterpreter.Declare("""
         float top_ptweight(ROOT::RVecF genPart_pt, ROOT::RVecI genPart_pdgId) {
             float gentoppt = -1.0, genantitoppt = -1.0;

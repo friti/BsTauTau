@@ -153,17 +153,17 @@ def draw_stat(ths1):
     return stats
 
 
-def style_and_draw_bstautau(temp_hists, k, data_ths, colours, scale_to_data=True):
+def style_and_draw_bstautau(temp_hists, k, ths1, colours, scale_to_mc=True):
     hist = temp_hists[k][f'{k}_bstautau']
     hist.SetFillColor(0)
     hist.SetLineColor(colours['bstautau'])
     hist.SetMarkerColor(colours['bstautau'])
-    print("BsTauTau histogram integral:", hist.Integral(),k)
+    #print("BsTauTau histogram integral:", hist.Integral(),k)
     
-    if scale_to_data:
-        scale_factor = data_ths.GetStack().Last().Integral() / hist.Integral()
+    if scale_to_mc:
+        scale_factor = ths1.GetStack().Last().Integral() / hist.Integral()
         hist.Scale(scale_factor)
-        print(f"Scaled BsTauTau histogram for total of {hist.Integral()}")
+        #print(f"Scaled BsTauTau histogram for total of {hist.Integral()}")
 
     hist.Draw("hist same")
     hist.Draw("EP same")
@@ -260,7 +260,7 @@ def process_histograms(histos, temp_hists, samples, ch, colours, label, titles, 
         # Draw histogram first to get proper axis ranges
         ths1.Draw('hist')
         
-        # Calculate desired maximum for Y-axis range (optimized)
+        # Calculate desired maximum for Y-axis range (considering all scenarios)
         if ths1.GetStack() and ths1.GetStack().Last():
             mc_max = ths1.GetStack().Last().GetMaximum()
         else:
@@ -270,10 +270,21 @@ def process_histograms(histos, temp_hists, samples, ch, colours, label, titles, 
             data_max = data_ths.GetStack().Last().GetMaximum()
         else:
             data_max = 1
-            
+        
+        # For BsTauTau plots, calculate max considering both scaled and unscaled versions
         if f'{k}_bstautau' in temp_hists[k]:
-            bstautau_max = temp_hists[k][f'{k}_bstautau'].GetValue().GetMaximum()
-            desired_max = 1.6 * max(mc_max, data_max, bstautau_max)
+            bstautau_hist = temp_hists[k][f'{k}_bstautau'].GetValue()
+            bstautau_unscaled_max = bstautau_hist.GetMaximum()
+            
+            # Calculate what the scaled max would be
+            if ths1.GetStack() and ths1.GetStack().Last():
+                scale_factor = ths1.GetStack().Last().Integral() / bstautau_hist.Integral() if bstautau_hist.Integral() > 0 else 1
+                bstautau_scaled_max = bstautau_unscaled_max * scale_factor
+            else:
+                bstautau_scaled_max = bstautau_unscaled_max
+            
+            # Use the maximum of all scenarios
+            desired_max = 1.6 * max(mc_max, data_max, bstautau_unscaled_max, bstautau_scaled_max)
         else:
             desired_max = 1.6 * max(mc_max, data_max)
         
@@ -299,7 +310,7 @@ def process_histograms(histos, temp_hists, samples, ch, colours, label, titles, 
         # Print data integral for debugging/verification
         if data_ths.GetStack() and data_ths.GetStack().Last():
             data_integral = data_ths.GetStack().Last().Integral()
-            print(f"Data histogram integral for {k}: {data_integral:.1f}")
+            #print(f"Data histogram integral for {k}: {data_integral:.1f}")
 
         leg.AddEntry(stats, 'stat. unc.', 'F')
         leg.Draw('same')
@@ -312,7 +323,7 @@ def process_histograms(histos, temp_hists, samples, ch, colours, label, titles, 
         
         # Version 1: BsTauTau at original scale (not scaled to data) - PLOT FIRST
         if f'{k}_bstautau' in temp_hists[k].keys():
-            style_and_draw_bstautau(temp_hists, k, data_ths, colours, scale_to_data=False)
+            style_and_draw_bstautau(temp_hists, k, ths1, colours, scale_to_mc=False)
 
         CMS_lumi(main_pad, 4, 0, cmsText='CMS', extraText=' Preliminary', lumi_13TeV='L = 59.7 fb^{-1}')
         main_pad.cd()
@@ -352,7 +363,7 @@ def process_histograms(histos, temp_hists, samples, ch, colours, label, titles, 
             leg.Draw('same')
             
             # Draw BsTauTau WITH scaling (this will modify the histogram permanently)
-            style_and_draw_bstautau(temp_hists, k, data_ths, colours, scale_to_data=True)
+            style_and_draw_bstautau(temp_hists, k, ths1, colours, scale_to_mc=True)
             
             CMS_lumi(main_pad, 4, 0, cmsText='CMS', extraText=' Preliminary', lumi_13TeV='L = 59.7 fb^{-1}')
             
@@ -402,6 +413,11 @@ def save_histograms_to_root_file(channel_folder, histogram_name, ths1, data_ths,
     
     # Only create unscaled folders if bstautau is present
     if f'{histogram_name}_bstautau' in temp_hists[histogram_name]:
+        bstautau_unscaled_folder = histo_folder.mkdir("bstautau_not_scaled")
+        lin_unscaled_folder = bstautau_unscaled_folder.mkdir("lin")
+        log_unscaled_folder = bstautau_unscaled_folder.mkdir("log")
+    else:
+        # Create empty unscaled folders for consistency
         bstautau_unscaled_folder = histo_folder.mkdir("bstautau_not_scaled")
         lin_unscaled_folder = bstautau_unscaled_folder.mkdir("lin")
         log_unscaled_folder = bstautau_unscaled_folder.mkdir("log")
@@ -455,5 +471,5 @@ def save_histograms_to_root_file(channel_folder, histogram_name, ths1, data_ths,
     if f'{histogram_name}_bstautau' in temp_hists[histogram_name]:
         save_histos_in_folder(lin_unscaled_folder, bstautau_scaled=False)
         save_histos_in_folder(log_unscaled_folder, bstautau_scaled=False)
-    
+
 

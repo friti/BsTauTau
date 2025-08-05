@@ -85,6 +85,10 @@ def compute_trigger_scale_factors(samples, ch):
     elif ch == 'ee':
         samples = samples.Define("trg_sf_weight", "get_ee_trigger_sf(e1_pt, e2_pt)")
         samples = samples.Define('tot_sf_weight', 'e_sf_weight*trg_sf_weight')
+
+    elif ch == 'e':
+        samples = samples.Define("e1_trgsf", 'get_single_e_trigger_sf(e1_pt,e1_eta)')
+        samples = samples.Define('tot_sf_weight', 'e_sf_weight*e1_trgsf')
     
     return samples
 

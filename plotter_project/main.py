@@ -89,7 +89,7 @@ def main():
     tree_name = 'Events'
 
     load_invmass()
-
+    load_sorting_functions()
     for ch in channels:
         print("=============================")
         print(f"========= Channel {ch} ========")
