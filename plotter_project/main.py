@@ -1,3 +1,7 @@
+'''
+- Once you have computed the SFs, the selection is fixed! If you change the selection, also Sfs need to be recomputed
+--plot_all_jets options is independent from Sfs computation, so you can compute it also after having already copmuted sfs
+Data is not well saved in the root file if you don't run with --noblinding option'''
 from datetime import datetime
 from io_utils import *
 from samples import *
@@ -13,13 +17,15 @@ from histos_baseline import *
 from histos_part import histos_combined_scores, histos_max_scores
 from part_scores_functions import *
 from plotting_flavourbased_utils import *
+from histos_part_selections import histos_part_selections
+
 
 import argparse
 import os
 import correctionlib
 correctionlib.register_pyroot_binding()
 
-nevents = None  # Set to None to process all events, or specify a number for a limited range
+nevents = None # Set to None to process all events, or specify a number for a limited range
 
 ROOT.gROOT.SetBatch()   
 ROOT.gStyle.SetOptStat(0)
@@ -33,7 +39,8 @@ if nevents is None:
     n_threads = multiprocessing.cpu_count()
     print(f"Enabling ROOT multithreading with {n_threads} threads")
     ROOT.EnableImplicitMT(n_threads)
-    
+    #ROOT.EnableImplicitMT(8)
+   
     # Optimize ROOT for performance
     ROOT.gEnv.SetValue("TFile.AsyncPrefetching", "1")  # Enable async prefetching
     ROOT.gEnv.SetValue("TTreeCache.Size", "50000000")  # 50MB cache
@@ -54,7 +61,11 @@ def parse_arguments():
     parser.add_argument('--compute_sfs', action='store_true', default=False, help='Save snapshots with scale factors (run again for plotting)')
     parser.add_argument('--compute_btag_sfs', action='store_true', default=False, help='Save snapshots with b-tag scale factors (run again for plotting)')
     parser.add_argument('--use_ntuples_with_sfs', action='store_true', default=False, help='Use ntuples with scale factors')
-    parser.add_argument('--use_ntuples_with_btag_sfs', action='store_true', default=False, help='Use ntuples with b-tag scale factors')
+    parser.add_argument('--use_ntuples_with_btag_sfs', action='store_true', default=True, help='Use ntuples with b-tag scale factors')
+    parser.add_argument('--plot_all_jets', action='store_true', default=False, help='Plot all b-tagged jets instead of just top 2 by pT')
+    parser.add_argument('--save_filtered_data', action='store_true', default=False, help='Save filtered/processed data for faster reprocessing')
+    parser.add_argument('--use_filtered_data', action='store_true', default=False, help='Use previously saved filtered data instead of processing from scratch')
+    parser.add_argument('--plot_part_selections', action='store_true', default=False, help='Enable ParT sequential cuts plots (ParTRawTauhtaumu_frac > 0.6)')
     return parser.parse_args()
 
 tau_scores = ['ParTRawTauhtauh', 'ParTRawTauhtaumu', 'ParTRawTauhtaue']
@@ -81,7 +92,11 @@ def main():
     make_histos = args.make_histos
     blinding = not args.noblinding
     part_samples = not args.not_part_samples
-
+    plot_all_jets = args.plot_all_jets
+    save_filtered_data = args.save_filtered_data
+    use_filtered_data = args.use_filtered_data
+    plot_part_selections = args.plot_part_selections
+    
     # Create plot directories
     make_directories_for_plots(label, channels)
 
@@ -100,6 +115,7 @@ def main():
             tree_dir = '/eos/cms/store/cmst3/group/bpark/ccaillol/ntuples_%s_2018'%(ch)
             tree_dir_wsfs= None
             tree_dir_btag_sfs = None
+            tree_dir_filtered = None
             files_names['tt_semilep'] = 'TTToSemiLeptonic'
             files_names['st_tw'] = 'ST_tW_top'
             # Remove 'bstautau' from mc_samples_names if present
@@ -109,6 +125,7 @@ def main():
             tree_dir = '/eos/cms/store/cmst3/group/bpark/friti/bstautau/flat_ntuples/ntuples_%s_2018_ParT'%(ch)
             tree_dir_wsfs = '/eos/cms/store/cmst3/group/bpark/friti/bstautau/flat_ntuples/ntuples_%s_2018_ParT/wsfs_snapshots'%(ch)
             tree_dir_btag_sfs = '/eos/cms/store/cmst3/group/bpark/friti/bstautau/flat_ntuples/ntuples_%s_2018_ParT/btag_sfs_snapshots'%(ch)
+            tree_dir_filtered = '/eos/cms/store/cmst3/group/bpark/friti/bstautau/flat_ntuples/ntuples_%s_2018_ParT/filtered_data_snapshots'%(ch)
             used_mc_samples_names = mc_samples_names  # Use all MC samples including 'bstautau'
 
         samples[ch] = dict()
@@ -120,7 +137,7 @@ def main():
 
         # Handle data samples
         print("====== Loading Data Samples ======")
-        data_samples, chains = load_data_samples(ch, data_samples_names, files_names, tree_name, tree_dir, trigger_selections, trigger_exclusions, eras_2018, nevents)
+        data_samples, chains = load_data_samples(ch, data_samples_names, files_names, tree_name, tree_dir, trigger_selections, trigger_exclusions, eras_2018, nevents, use_filtered_data, tree_dir_filtered)
         samples[ch].update(data_samples)
 
         for k, v in samples[ch].items():
@@ -138,7 +155,7 @@ def main():
                 bstautau_conditions = None
 
             #!!!!! MC snapshots already saved and these branches already defined. Be careful if changing jet selections this needs to rerun!!!
-            if (not compute_btag_sfs and not use_ntuples_with_sfs and not use_ntuples_with_btag_sfs) or 'data' in k: 
+            if (not compute_btag_sfs and not use_ntuples_with_sfs and not use_ntuples_with_btag_sfs and not 'data' in k) or (not use_filtered_data and 'data' in k):
 
                 samples[ch][k] = define_invariant_mass_and_mt(samples[ch][k],ch)
 
@@ -152,13 +169,8 @@ def main():
                 # Define jets with minimum selection for histograms
                 samples[ch][k] = define_jets_with_minimum_selection_for_histos(samples[ch][k], is_bstautau='bstautau' in k, bstautau_conditions=bstautau_conditions, part_samples=part_samples)
 
-                # Define b-tagging conditions
-                samples[ch][k] = define_jets_with_btagging_selection(samples[ch][k], part_samples=part_samples)
-
-
-                ## define bstautau mask for different tau decay modes
-                if 'bstautau' in k:
-                    samples[ch][k] = define_bstautau_taudecaymodes_mask(samples[ch][k])
+                # Define b-tagging conditions for filters (needed for selections)
+                samples[ch][k] = define_jets_with_btagging_selection_for_filters(samples[ch][k], part_samples=part_samples)
 
 
                 # Define Filtering conditions (used in selections)
@@ -190,8 +202,14 @@ def main():
             # Compute B-tagging Scale Factors separately if requested
             if compute_btag_sfs and 'data' not in k:
                 print(f"Computing b-tagging scale factors for sample {k} in channel {ch}")
-                samples[ch][k] = compute_btagging_scale_factors(samples[ch][k], ch)
-                samples[ch][k] = compute_btagging_event_weight(samples[ch][k], ch)
+                if ch == 'mu': # btagging condition is medium for channel mu
+                    samples[ch][k] = compute_btagging_scale_factors(samples[ch][k], ch, "M")
+                    samples[ch][k] = compute_btagging_event_weight(samples[ch][k], ch, "M")
+
+                else:
+                    samples[ch][k] = compute_btagging_scale_factors(samples[ch][k], ch, "L")
+                    samples[ch][k] = compute_btagging_event_weight(samples[ch][k], ch, "L")
+
 
                 ## Specify a custom output directory for saving snapshots
                 output_dir = f"{tree_dir}/btag_sfs_snapshots/"
@@ -202,31 +220,56 @@ def main():
                 save_samples_with_btagging_sfs(samples[ch][k], ch, k, files_names, output_dir=output_dir)
 
 
+
+            # Save filtered data if requested (ONLY for data samples, MC samples are skimmed already after SF computation)
+            if save_filtered_data and 'data' in k:
+                print(f"Saving filtered data for sample {k} in channel {ch}")
+                
+                ## Use the new save function that handles eras properly
+                output_dir = f"{tree_dir}/filtered_data_snapshots"
+                save_filtered_data_snapshot(samples[ch][k], ch, k, files_names, output_dir)
+
+
+
+            # Define histogram-specific b-tagging branches AFTER filtering (won't be in snapshots)
+            samples[ch][k] = define_jets_with_btagging_selection_for_histos(samples[ch][k], part_samples=part_samples, plot_all_jets=plot_all_jets)
+            ## define bstautau mask for different tau decay modes
+            if 'bstautau' in k:
+                samples[ch][k] = define_bstautau_taudecaymodes_mask(samples[ch][k])
+            
             if 'data' not in k:
                 weight_str = build_weight_string(k, files_names, args)
                 #print(f"Applying weights to {k}: {weight_str}")
                 samples[ch][k] = samples[ch][k].Define('tot_weight', weight_str)
 
 
-            if part_samples:
-                histos[ch].update(histos_jets_part)
-                histos[ch].update(histos_interesting_jets_part)
-
-
-                ## Define combined scores histograms
+            if part_samples: #using updated samples with part scores
                 samples[ch][k] = define_combined_scores(samples[ch][k], tau_scores, parT_scores, bkg_scores, 'bstautau' in k, bstautau_conditions)
-                histos[ch].update(histos_combined_scores)
-                
-                if flavor:
-                    histos_flavor[ch].update(histos_interesting_jets_part)
-                    histos_flavor[ch].update(histos_combined_scores)
+                if plot_part_selections:
+                    # Apply  cuts filter and ONLY use those histograms
+                    samples[ch][k] = apply_part_sequential_cuts_filter(samples[ch][k], is_bstautau='bstautau' in k)
+                    histos[ch] = {}  # Clear regular histos
+                    histos[ch].update(histos_part_selections)  # Only add sequential cuts histos
+                    
+                    if flavor:
+                        histos_flavor[ch] = {}  # Clear regular flavor histos
+                        histos_flavor[ch].update(histos_part_selections)  # Only add sequential cuts histos for flavor
+                else:
+                    # Regular plotting - define all the usual histograms
+                    ## Define combined scores histograms
+                    histos[ch].update(histos_combined_scores)
 
+                    histos[ch].update(histos_jets_part)
+                    histos[ch].update(histos_interesting_jets_part)
 
+                    if flavor:
+                        histos_flavor[ch].update(histos_interesting_jets_part)
+                        histos_flavor[ch].update(histos_combined_scores)
 
-                ## define MAX scores
-                samples[ch][k] = define_max_scores(samples[ch][k], parT_scores, 'bstautau' in k, bstautau_conditions)
-                histos[ch].update(histos_max_scores)
-                #histos_flavor[ch].update(histos_max_scores) Not really easy to do because they are filtered in a weird way and I would need to define also hadronFlavor with the same filter
+                    ## define MAX scores
+                    samples[ch][k] = define_max_scores(samples[ch][k], parT_scores, 'bstautau' in k, bstautau_conditions)
+                    histos[ch].update(histos_max_scores)
+                    #histos_flavor[ch].update(histos_max_scores) Not really easy to do because they are filtered in a weird way and I would need to define also hadronFlavor with the same filter
 
         print("##### Creating Histogram Definitions #####")
         # Initialize all histogram definitions BEFORE processing (lazy setup)
@@ -257,5 +300,5 @@ def main():
 
     print("#### Plotting label:", label)
     print("End of script at ", datetime.now().strftime('%d%b%Y_%Hh%Mm%Ss'))
-if __name__ == '__main__':
-    main()
+
+if __name__ == '__main__':    main()

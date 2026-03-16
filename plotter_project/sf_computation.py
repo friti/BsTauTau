@@ -107,7 +107,7 @@ def compute_additional_scale_factors(samples, k, files_names):
     """
     
     # Top pT reweighting for TTbar samples
-    if 'TTT' in files_names[k]:
+    if 'TTT' in files_names[k] or 'BsToTauTau' in files_names[k]:
         samples = samples.Define("top_pt_weight", "top_ptweight(GenCand_pt, GenCand_id)")
     
     return samples
@@ -156,34 +156,46 @@ def save_samples_with_sfs(samples, ch, k, files_names, output_dir):
 
 
 ## btagging scale factors
-def compute_btagging_scale_factors(samples, ch):
+def compute_btagging_scale_factors(samples, ch, wp="L"):
     # btagging scale factors depending on btagging selection conditions in various channels
-    
-    # can not use directly evaluate because jets are vector
+    # wp: working point, "L" (loose) or "M" (medium)
 
-    ## FIXME : choose the WP 
     samples = samples.Define("bcjet_mask", "selected_jets_for_histo_hadronFlavour != 0")
     samples = samples.Define("bcjet_flavour", "selected_jets_for_histo_hadronFlavour[bcjet_mask]")
     samples = samples.Define("bcjet_eta", "selected_jets_for_histo_eta[bcjet_mask]")
     samples = samples.Define("bcjet_pt", "selected_jets_for_histo_pt[bcjet_mask]")
-    samples = samples.Define("btag_sf_bcjets", "evaluate_btag_mujets_sf(bcjet_flavour, bcjet_eta, bcjet_pt)")
-    
+    samples = samples.Define(
+        "btag_sf_bcjets",
+        f'evaluate_btag_mujets_sf(bcjet_flavour, bcjet_eta, bcjet_pt, "{wp}")'
+    )
+
     samples = samples.Define("lightjet_mask", "selected_jets_for_histo_hadronFlavour == 0")
     samples = samples.Define("lightjet_flavour", "selected_jets_for_histo_hadronFlavour[lightjet_mask]")
     samples = samples.Define("lightjet_eta", "selected_jets_for_histo_eta[lightjet_mask]")
     samples = samples.Define("lightjet_pt", "selected_jets_for_histo_pt[lightjet_mask]")
-    samples = samples.Define("btag_sf_lightjets", "evaluate_btag_incl_sf(lightjet_flavour, lightjet_eta, lightjet_pt)")
-    
-    samples = samples.Define("btag_sf", "merge_btag_sfs(selected_jets_for_histo_hadronFlavour, btag_sf_bcjets, btag_sf_lightjets)")
+    samples = samples.Define(
+        "btag_sf_lightjets",
+        f'evaluate_btag_incl_sf(lightjet_flavour, lightjet_eta, lightjet_pt, "{wp}")'
+    )
 
+    samples = samples.Define(
+        "btag_sf",
+        "merge_btag_sfs(selected_jets_for_histo_hadronFlavour, btag_sf_bcjets, btag_sf_lightjets)"
+    )
+    
     return samples
 
-def compute_btagging_event_weight(samples, ch):
+def compute_btagging_event_weight(samples, ch, wp):
     # for the moment only loose btagging is used
+    if wp == 'L':
+        threshold = 0.0499  # Loose working point threshold
+    elif wp == 'M':
+        threshold = 0.2770  # Medium working point threshold
     samples = samples.Define(
         "btag_event_weight",
-        "compute_event_weight(selected_jets_for_histo_deepflavB, 0.049, btag_sf, selected_jets_for_histo_hadronFlavour, selected_jets_for_histo_eta, selected_jets_for_histo_pt)"
+        f'compute_event_weight(selected_jets_for_histo_deepflavB, {threshold}, btag_sf, selected_jets_for_histo_hadronFlavour, selected_jets_for_histo_eta, selected_jets_for_histo_pt, "{wp}")'
     )
+ 
     return samples
 
 def plot_event_weight_2d(samples, output_path):
@@ -244,5 +256,5 @@ def save_samples_with_btagging_sfs(samples, ch, k, files_names, output_dir):
     output_path = f"{output_dir}{files_names[k]}.root"
     samples.Snapshot("Events", output_path)
     print(f"Saved sample with b-tagging SFs: {output_path}")
-    
+
 

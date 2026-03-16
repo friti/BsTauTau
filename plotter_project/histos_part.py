@@ -7,13 +7,16 @@ histos = dict()
 histos_combined_scores = dict()
 ## combined scores
 histos_combined_scores['btagged_loose_jets_pt_above_20_for_histo_part_all_sig_frac'] = (ROOT.RDF.TH1DModel('btagged_loose_jets_pt_above_20_for_histo_part_all_sig_frac', '', 20, 0, 1), 'sig frac', 1)
-histos_combined_scores['btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtaue_frac_masked'] = (ROOT.RDF.TH1DModel('btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtaue_frac_masked', '', 20, 0, 1), ' frac', 1)
-histos_combined_scores['btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtauh_frac_masked'] = (ROOT.RDF.TH1DModel('btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtauh_frac_masked', '', 20, 0, 1), 'frac', 1)
-histos_combined_scores['btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtaumu_frac_masked'] = (ROOT.RDF.TH1DModel('btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtaumu_frac_masked', '', 20, 0, 1), 'frac', 1)
-histos_combined_scores['btagged_loose_jets_pt_above_20_for_histo_part_sig_over_ParTRawB'] = (ROOT.RDF.TH1DModel('btagged_loose_jets_pt_above_20_for_histo_part_sig_over_ParTRawB', '', 20, 0, 1), 'frac', 1)
-histos_combined_scores['btagged_loose_jets_pt_above_20_for_histo_part_sig_over_ParTRawC'] = (ROOT.RDF.TH1DModel('btagged_loose_jets_pt_above_20_for_histo_part_sig_over_ParTRawC', '', 20, 0, 1), 'frac', 1)
-histos_combined_scores['btagged_loose_jets_pt_above_20_for_histo_part_sig_over_ParTRawOther'] = (ROOT.RDF.TH1DModel('btagged_loose_jets_pt_above_20_for_histo_part_sig_over_ParTRawOther', '', 20, 0, 1), 'frac', 1)        
-histos_combined_scores['btagged_loose_jets_pt_above_20_for_histo_part_sig_over_ParTRawSingletau'] = (ROOT.RDF.TH1DModel('btagged_loose_jets_pt_above_20_for_histo_part_sig_over_ParTRawSingletau', '', 20, 0, 1), 'frac', 1)        
+
+# Decay-mode specific masks (existing)
+histos_combined_scores['btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtaue_frac_masked'] = (ROOT.RDF.TH1DModel('btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtaue_frac_masked', '', 20, 0, 1), 'ParT #tau_{h}#tau_{e} frac (decay-specific)', 1)
+histos_combined_scores['btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtauh_frac_masked'] = (ROOT.RDF.TH1DModel('btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtauh_frac_masked', '', 20, 0, 1), 'ParT #tau_{h}#tau_{h} frac (decay-specific)', 1)
+histos_combined_scores['btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtaumu_frac_masked'] = (ROOT.RDF.TH1DModel('btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtaumu_frac_masked', '', 20, 0, 1), 'ParT #tau_{h}#tau_{#mu} frac (decay-specific)', 1)
+
+# General masks (NEW - no decay mode diversification)
+histos_combined_scores['btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtaue_frac_general'] = (ROOT.RDF.TH1DModel('btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtaue_frac_general', '', 20, 0, 1), 'ParT #tau_{h}#tau_{e} frac (general)', 1)
+histos_combined_scores['btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtauh_frac_general'] = (ROOT.RDF.TH1DModel('btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtauh_frac_general', '', 20, 0, 1), 'ParT #tau_{h}#tau_{h} frac (general)', 1)
+histos_combined_scores['btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtaumu_frac_general'] = (ROOT.RDF.TH1DModel('btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtaumu_frac_general', '', 20, 0, 1), 'ParT #tau_{h}#tau_{#mu} frac (general)', 1)
 
 histos_max_scores = dict()
 ## max scores

@@ -67,6 +67,32 @@ def declare_sfs_cpp_functions():
         }
     """)
     ROOT.gInterpreter.Declare("""
+        TFile* ee_trg_sf_file = nullptr;
+        TH2F* sfshisto_ee = nullptr;
+
+        void load_sfshisto_ee() {
+            if (ee_trg_sf_file == nullptr) {
+                ee_trg_sf_file = TFile::Open("sfs/dilepton_trigger_sfs_2018.root", "READ");
+                if (!ee_trg_sf_file || !ee_trg_sf_file->IsOpen()) {
+                    std::cerr << "Error: File not found or unable to open!" << std::endl;
+                }
+                sfshisto_ee = (TH2F*)ee_trg_sf_file->Get("h2D_SF_ee_lepABpt_FullError");
+                if (!sfshisto_ee) {
+                    std::cerr << "Error: Histogram not found!" << std::endl;
+                }
+            }
+        }
+
+        double get_ee_trigger_sf(double e1_pt, double e2_pt) {
+            if (sfshisto_ee == nullptr) {
+                load_sfshisto_ee();
+            }
+            int bin_x = sfshisto_ee->GetXaxis()->FindBin(e1_pt);
+            int bin_y = sfshisto_ee->GetYaxis()->FindBin(e2_pt);
+            return sfshisto_ee->GetBinContent(bin_x, bin_y);
+        }
+    """)
+    ROOT.gInterpreter.Declare("""
         TFile* single_e_trg_sf_file = nullptr;
         TH2F* sfshisto_single_e = nullptr;
 
@@ -125,51 +151,53 @@ def declare_sfs_cpp_functions():
     #include <vector>
     #include <cmath>
 
-    // Load the correction once
-    //correction::Correction::Ref csetBtag_comb = correction::CorrectionSet::from_file("sfs/btagging.json")->at("deepJet_comb");
-
     // Loop over jets, evaluate SF per jet, return vector of SFs
-std::vector<float> evaluate_btag_mujets_sf(const ROOT::VecOps::RVec<int>& flav,
-                                    const ROOT::VecOps::RVec<float>& eta,
-                                    const ROOT::VecOps::RVec<float>& pt) {
+    std::vector<float> evaluate_btag_mujets_sf(const ROOT::VecOps::RVec<int>& flav,
+                                        const ROOT::VecOps::RVec<float>& eta,
+                                        const ROOT::VecOps::RVec<float>& pt,
+                                        const std::string& wp = "L") {
         std::vector<float> result;
         result.reserve(pt.size());
         for (size_t i = 0; i < pt.size(); ++i) {
             float eta_val = std::abs(eta[i]);
-            if (eta_val == 2.5f) {
+            if (eta_val >= 2.5f) {
                 eta_val = 2.499f;
             }
+            double pt_val = static_cast<double>(pt[i]);
+            if (pt_val <= 20.0) pt_val = 20.01;
+            else if (pt_val >= 1000.0) pt_val = 999.99;
             float sf = csetBtag_mujets->evaluate({
-           "central",            // C-style string literal (const char*)
-            "L",                  // C-style string literal (const char*)
-            flav[i],              // int
-            eta_val,     // double (float promoted to double)
-            static_cast<double>(pt[i])
+                "central",            // C-style string literal (const char*)
+                wp.c_str(),           // working point, now configurable
+                flav[i],              // int
+                eta_val,              // double (float promoted to double)
+                pt_val
             });
             result.push_back(sf);
         }
-
         return result;
     }
                               
     std::vector<float> evaluate_btag_incl_sf(const ROOT::VecOps::RVec<int>& flav,
-                                    const ROOT::VecOps::RVec<float>& eta,
-                                    const ROOT::VecOps::RVec<float>& pt) {
+                                        const ROOT::VecOps::RVec<float>& eta,
+                                        const ROOT::VecOps::RVec<float>& pt,
+                                        const std::string& wp = "L") {
         std::vector<float> result;
         result.reserve(pt.size());
         for (size_t i = 0; i < pt.size(); ++i) {
             float eta_val = std::abs(eta[i]);
-            if (eta_val == 2.5f) {
+            if (eta_val >= 2.5f) {
                 eta_val = 2.499f;
             }
+            double pt_val = static_cast<double>(pt[i]);
+            if (pt_val <= 20.0) pt_val = 20.01;
+            else if (pt_val >= 1000.0) pt_val = 999.99;
             float sf = csetBtag_incl->evaluate({
-           "central",            // C-style string literal (const char*)
-            "L",                  // C-style string literal (const char*)
-            flav[i],              // int
-            eta_val,              // double (float promoted to double)
-            static_cast<double>(pt[i])
-
-
+                "central",            // C-style string literal (const char*)
+                wp.c_str(),           // working point, now configurable
+                flav[i],              // int
+                eta_val,              // double (float promoted to double)
+                pt_val
             });
             result.push_back(sf);
         }
@@ -197,67 +225,95 @@ std::vector<float> evaluate_btag_mujets_sf(const ROOT::VecOps::RVec<int>& flav,
     """)
 
 
-   ## FIXME : add some ways to ensure that if ranges are outside efficiencies histos it still gets a good value
     ROOT.gInterpreter.Declare("""
 
-    TEfficiency* eff_hist_b = nullptr;
-    TEfficiency* eff_hist_c = nullptr;
-    TEfficiency* eff_hist_light = nullptr;
+    TEfficiency* eff_hist_b_L = nullptr;
+    TEfficiency* eff_hist_c_L = nullptr;
+    TEfficiency* eff_hist_light_L = nullptr;
+    TEfficiency* eff_hist_b_M = nullptr;
+    TEfficiency* eff_hist_c_M = nullptr;
+    TEfficiency* eff_hist_light_M = nullptr;
 
-    float get_efficiency(int flav, float eta, float pt) {
-        if (!eff_hist_b) {
+    TEfficiency* get_eff_hist(int flav, const std::string& wp) {
+        static bool loaded = false;
+        if (!loaded) {
             TFile* f = TFile::Open("btageff_histos/0520A050-AF68-EF43-AA5B-5AA77C74ED73_out.root");
 
-            eff_hist_b = (TEfficiency*)f->Get("h2_LEff_b");
-            eff_hist_c = (TEfficiency*)f->Get("h2_LEff_c");
-            eff_hist_light = (TEfficiency*)f->Get("h2_LEff_udsg");
+            eff_hist_b_L = (TEfficiency*)f->Get("h2_LEff_b");
+            eff_hist_c_L = (TEfficiency*)f->Get("h2_LEff_c");
+            eff_hist_light_L = (TEfficiency*)f->Get("h2_LEff_udsg");
 
-            if (!eff_hist_b || !eff_hist_c || !eff_hist_light) {
+            eff_hist_b_M = (TEfficiency*)f->Get("h2_MEff_b");
+            eff_hist_c_M = (TEfficiency*)f->Get("h2_MEff_c");
+            eff_hist_light_M = (TEfficiency*)f->Get("h2_MEff_udsg");
+
+            if (!eff_hist_b_L || !eff_hist_c_L || !eff_hist_light_L ||
+                !eff_hist_b_M || !eff_hist_c_M || !eff_hist_light_M) {
                 std::cerr << "[ERROR] TEfficiency histos not found!" << std::endl;
                 f->Close();
                 delete f;
-                return 1.0;
+                return nullptr;
             }
 
             f->Close();
             delete f;
+            loaded = true;
         }
 
-        TEfficiency* h = nullptr;
-        if (abs(flav) == 5) h = eff_hist_b;
-        else if (abs(flav) == 4) h = eff_hist_c;
-        else h = eff_hist_light;
-
-
-        int bin = h->FindFixBin(pt, fabs(eta));
-        return h->GetEfficiency(bin);
+        if (wp == "L") {
+            if (abs(flav) == 5) return eff_hist_b_L;
+            else if (abs(flav) == 4) return eff_hist_c_L;
+            else return eff_hist_light_L;
+        } else if (wp == "M") {
+            if (abs(flav) == 5) return eff_hist_b_M;
+            else if (abs(flav) == 4) return eff_hist_c_M;
+            else return eff_hist_light_M;
+        } else {
+            std::cerr << "[ERROR] Unknown working point: " << wp << std::endl;
+            return nullptr;
+        }
     }
 
+    float get_efficiency(int flav, float eta, float pt, const std::string& wp) {
+        TEfficiency* h = get_eff_hist(flav, wp);
+        if (!h) return 1.0;
 
-        float compute_event_weight(
-            const ROOT::VecOps::RVec<float>& discr,    // jet btag discriminator (e.g. deepJet score)
-            float wp,                                  // working point threshold
-            const ROOT::VecOps::RVec<float>& sf,      // per-jet scale factors
-            const ROOT::VecOps::RVec<int>& flav,      // hadron flavour per jet
-            const ROOT::VecOps::RVec<float>& eta,
-            const ROOT::VecOps::RVec<float>& pt)
-        {
-            float weight = 1.0; // per event weight 
-            for (size_t i = 0; i < discr.size(); ++i) { // loop over the jets
-                bool is_btagged = (discr[i] > wp);
-                if(pt[i] < 30) {
-                    continue; // skip jets with low pt
-                }
-                float eff = get_efficiency(flav[i], eta[i], pt[i]);
-                float denom = 1.0 - eff;
-                if (denom == 0) denom = 1e-6;
-                if (is_btagged) {
-                    weight *= sf[i];
-                } else {
-                    weight *= (1 - (sf[i] * eff)) / denom;
-                }
+        // Clamp pt to [20, 1000]
+        float pt_clamped = pt;
+        if (pt <= 20.0f) pt_clamped = 20.0f + 1e-2f;
+        else if (pt >= 1000.0f) pt_clamped = 1000.0f - 1e-2f;
+
+        int bin = h->FindFixBin(pt_clamped, fabs(eta));
+        float eff = h->GetEfficiency(bin);
+        return eff;
+    }
+
+    float compute_event_weight(
+        const ROOT::VecOps::RVec<float>& discr,    // jet btag discriminator (e.g. deepJet score)
+        float wp_val,                              // working point threshold
+        const ROOT::VecOps::RVec<float>& sf,      // per-jet scale factors
+        const ROOT::VecOps::RVec<int>& flav,      // hadron flavour per jet
+        const ROOT::VecOps::RVec<float>& eta,
+        const ROOT::VecOps::RVec<float>& pt,
+        const std::string& wp_str = "L"           // working point string ("L" or "M")
+    )
+    {
+        float weight = 1.0; // per event weight 
+        std::vector<std::string> debug_lines;
+        for (size_t i = 0; i < discr.size(); ++i) { // loop over the jets
+            bool is_btagged = (discr[i] > wp_val);
+
+            float eff = get_efficiency(flav[i], eta[i], pt[i], wp_str);
+            float denom = 1.0 - eff;
+            if (denom == 0) denom = 1e-6;
+            float prev_weight = weight;
+            if (is_btagged) {
+                weight *= sf[i];
+            } else {
+                weight *= (1 - (sf[i] * eff)) / denom;
             }
-            return weight;
-        }
-        """)
 
+        }
+         return weight;
+    }
+    """)

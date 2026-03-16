@@ -32,17 +32,22 @@ def define_combined_scores(
         frac_expr = f"{tau_var} / ({tau_var} + btagged_loose_jets_pt_above_20_for_histo_part_bkg_sum)"
         samples = samples.Define(frac_var, frac_expr) # define just the fraction (no mask on bstautau)
 
-        # Apply mask if bstautau and masks provided
+        # Apply decay-mode-specific mask if bstautau and masks provided
         if is_bstautau:
             decay_mode = tau.lower().replace("partraw", "")  # crude but works
             mask = bstautau_masks.get(decay_mode)
-            expr = f"{frac_var}[{mask}]" 
-
+            expr_masked = f"{frac_var}[{mask}]" 
+            expr_general = f"{frac_var}"  # General mask already used in the original branch definition
         else:
-            expr = frac_var
+            expr_masked = frac_var
+            expr_general = frac_var
         
-        masked_var = f"{frac_var}_masked" # exactly as frac, but with bstautau masked
-        samples = samples.Define(masked_var, expr)
+        masked_var = f"{frac_var}_masked" # decay-mode specific for bstautau
+        samples = samples.Define(masked_var, expr_masked)
+        
+        general_var = f"{frac_var}_general" # general mask for bstautau (no decay mode diversification)
+        samples = samples.Define(general_var, expr_general)
+
 
 
     # Signal over individual background scores
@@ -144,4 +149,88 @@ def define_max_scores(
     return samples
 
 
+
+def apply_part_sequential_cuts_filter(samples, is_bstautau=False):
+    """Apply sequential cuts filter to create two sets of categories:
+    
+    1. EXCLUSIVE categories (refined cuts):
+       - tauhtaumu: tauhtaumu > 0.6 (exclusive)
+       - tauhtaue: tauhtaumu < 0.6 AND tauhtaue > 0.4 (exclusive)  
+       - tauhtauh: tauhtaumu < 0.6 AND tauhtaue < 0.4 (exclusive)
+    
+    2. ONLYTAUMUCUT categories (simple cuts):
+       - tauhtaumu: tauhtaumu > 0.6 
+       - tauhtaue: tauhtaumu < 0.6
+       - tauhtauh: tauhtaumu < 0.6
+    """
+    # Define cut conditions using GENERAL branches
+    cut_variable_mu = "btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtaumu_frac_general"
+    cut_variable_e = "btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtaue_frac_general"
+    cut_threshold_mu = 0.6
+    cut_threshold_e = 0.4
+
+    # Define the cut conditions once
+    cut_conditions = {
+        'exclusive': {
+            'tauhtaumu': f"{cut_variable_mu} > {cut_threshold_mu}",
+            'tauhtaue': f"({cut_variable_mu} < {cut_threshold_mu}) && ({cut_variable_e} > {cut_threshold_e})",
+            'tauhtauh': f"({cut_variable_mu} < {cut_threshold_mu}) && ({cut_variable_e} < {cut_threshold_e})"
+        },
+        'onlytaumucut': {
+            'tauhtaumu': f"{cut_variable_mu} > {cut_threshold_mu}",
+            'tauhtaue': f"{cut_variable_mu} < {cut_threshold_mu}",
+            'tauhtauh': f"{cut_variable_mu} < {cut_threshold_mu}"
+        }
+    }
+
+    branches_to_filter = [
+        'btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtaue_frac_general',
+        'btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtauh_frac_general', 
+        'btagged_loose_jets_pt_above_20_for_histo_ParTRawTauhtaumu_frac_general'
+    ]
+
+    # Apply cuts to ParT score branches
+    for branch_name in branches_to_filter:
+        # Determine which tau type this branch represents
+        if "Tauhtaumu" in branch_name:
+            tau_type = 'tauhtaumu'
+        elif "Tauhtaue" in branch_name:
+            tau_type = 'tauhtaue'
+        elif "Tauhtauh" in branch_name:
+            tau_type = 'tauhtauh'
+        else:
+            continue
+        
+        # Apply cuts for both selection types
+        for selection_type in ['exclusive', 'onlytaumucut']:
+            condition = cut_conditions[selection_type][tau_type]
+            filtered_branch = f"{branch_name}_{selection_type}"
+            samples = samples.Define(filtered_branch, f"{branch_name}[{condition}]")
+
+    # CRITICAL: Create hadronFlavour branches for EACH selection type and tau category
+    hadron_flavour_base = 'btagged_loose_jets_pt_above_20_for_histo_hadronFlavour'
+    
+    for selection_type in ['exclusive', 'onlytaumucut']:
+        for tau_type in ['tauhtaumu', 'tauhtaue', 'tauhtauh']:
+            condition = cut_conditions[selection_type][tau_type]
+            flavour_branch = f"{hadron_flavour_base}_{selection_type}_{tau_type}"
+            samples = samples.Define(flavour_branch, f"{hadron_flavour_base}[{condition}]")
+    
+    # Also create general selection-type branches (not tau-specific) for convenience
+    for selection_type in ['exclusive', 'onlytaumucut']:
+        # Use tauhtaumu condition as default for general case
+        general_condition = cut_conditions[selection_type]['tauhtaumu']
+        general_flavour_branch = f"{hadron_flavour_base}_{selection_type}"
+        samples = samples.Define(general_flavour_branch, f"{hadron_flavour_base}[{general_condition}]")
+
+
+    # Jet mass branch base name
+    jet_mass_base = "btagged_loose_jets_pt_above_20_for_histo_m"
+
+    # Define jet mass branches for each exclusive selection
+    samples = samples.Define(f"{jet_mass_base}_exclusive_tauhtaumu", f"{jet_mass_base}[{cut_conditions['exclusive']['tauhtaumu']}]")
+    samples = samples.Define(f"{jet_mass_base}_exclusive_tauhtaue", f"{jet_mass_base}[{cut_conditions['exclusive']['tauhtaue']}]")
+    samples = samples.Define(f"{jet_mass_base}_exclusive_tauhtauh", f"{jet_mass_base}[{cut_conditions['exclusive']['tauhtauh']}]")
+
+    return samples
 

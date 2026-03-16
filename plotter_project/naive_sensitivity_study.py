@@ -14,7 +14,7 @@ ROOT.gROOT.SetBatch(True)  # For headless plotting
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--input', default='01Aug2025_14h48m28s', help='Input ROOT file')
+    parser.add_argument('--input', default='01Aug2025_16h34m53s_nosfs_allchannels', help='Input ROOT file')
     parser.add_argument('--channel', default='emu', help='Channel (emu, mumu, ee, e, mu)')
     args = parser.parse_args()
     

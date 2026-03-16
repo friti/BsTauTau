@@ -1,5 +1,6 @@
 import ROOT
 from histos_part import histos_combined_scores, histos_max_scores
+from histos_part_selections import histos_part_selections
 
 def apply_data_blinding_to_histogram(data_histogram, histogram_name, min_blinded_bins=10):
     """
@@ -99,4 +100,7 @@ def should_apply_blinding(histogram_name):
         return True
     if histogram_name in histos_max_scores.keys():
         return True
+    if histogram_name in histos_part_selections.keys():
+        return True
+
     return False

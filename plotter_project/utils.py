@@ -99,8 +99,8 @@ def define_jets_with_minimum_selection_for_histos(samples, is_bstautau, bstautau
     return samples
 
 
-def define_jets_with_btagging_selection(samples, part_samples):
-    """Function to define b-tagging conditions with descriptive names."""
+def define_jets_with_btagging_selection_for_filters(samples, part_samples):
+    """Function to define b-tagging conditions needed for event selection filters."""
     
     # Define pt thresholds
     pt_thresholds = [10, 20, 30]
@@ -115,42 +115,65 @@ def define_jets_with_btagging_selection(samples, part_samples):
         # Base b-tagging condition
         samples = samples.Define(f"btagged_{btag_level}_jets", f"selected_jets_pt[selected_jets_deepflavB > {btag_value}]")
         
-        # Add pt thresholds
+        # Add pt thresholds - these are needed for selection filters
         for pt in pt_thresholds:
             samples = samples.Define(
                 f"btagged_{btag_level}_jets_pt_above_{pt}",
                 f"selected_jets_pt[selected_jets_deepflavB > {btag_value} & selected_jets_pt > {pt}]"
             )
 
-
-    '''Define the btagged jets but with the bstautau mask'''
+    '''Define the btagged jets but with the bstautau mask - base collections only'''
     # Define b-tagging conditions for medium and loose thresholds
     for btag_level, btag_value in btag_thresholds.items():
-        # Base b-tagging condition
+        # Base b-tagging condition for histograms
         for attr in jet_attributes:
             samples = samples.Define(f"btagged_{btag_level}_jets_for_histo_{attr}", f"selected_jets_for_histo_{attr}[selected_jets_for_histo_deepflavB > {btag_value}]")
-           
-            # Add pt thresholds - sort by pT and take top 2 jets
-            for pt in pt_thresholds:
+
+    return samples
+
+def define_jets_with_btagging_selection_for_histos(samples, part_samples, plot_all_jets=False):
+    """Function to define b-tagging histogram branches - call after snapshots."""
+    
+    # Define pt thresholds
+    pt_thresholds = [10, 20, 30]
+
+    if part_samples:
+        jet_attributes = jet_attributes_global + jet_attributes_part
+    else:
+        jet_attributes = jet_attributes_global
+
+    # Define b-tagging conditions for medium and loose thresholds
+    for btag_level, btag_value in btag_thresholds.items():
+        # Add pt thresholds - conditionally apply top N selection
+        for pt in pt_thresholds:
+            for attr in jet_attributes:
                 # First create the filtered collection
                 filtered_attr = f"btagged_{btag_level}_jets_pt_above_{pt}_filtered_{attr}"
                 samples = samples.Define(
                     filtered_attr,
                     f"selected_jets_for_histo_{attr}[selected_jets_for_histo_deepflavB > {btag_value} & selected_jets_for_histo_pt > {pt}]"
                 )
-                
-                # Then sort by pT and take top 2
-                if attr == 'pt':
+                # Choose between top 2 jets or all jets based on flag
+                if plot_all_jets:
+                    # Use all jets - just alias the filtered collection
                     samples = samples.Define(
                         f"btagged_{btag_level}_jets_pt_above_{pt}_for_histo_{attr}",
-                        f"takeTopNByPt({filtered_attr}, {filtered_attr}, 2)"
+                        filtered_attr
                     )
                 else:
-                    filtered_pt = f"btagged_{btag_level}_jets_pt_above_{pt}_filtered_pt"
-                    samples = samples.Define(
-                        f"btagged_{btag_level}_jets_pt_above_{pt}_for_histo_{attr}",
-                        f"takeTopNByPt({filtered_attr}, {filtered_pt}, 2)"
-                    )
+                    # Take top 2 jets (current behavior)
+                    if attr == 'pt':
+                        samples = samples.Define(
+                            f"btagged_{btag_level}_jets_pt_above_{pt}_for_histo_{attr}",
+                            f"takeTopNByPt({filtered_attr}, {filtered_attr}, 2)"
+                        )
+                    else:
+                        filtered_pt = f"btagged_{btag_level}_jets_pt_above_{pt}_filtered_pt"
+                        samples = samples.Define(
+                            f"btagged_{btag_level}_jets_pt_above_{pt}_for_histo_{attr}",
+                            f"takeTopNByPt({filtered_attr}, {filtered_pt}, 2)"
+                        )
+
 
         # Define the number of b-tagged jets for each threshold
         for pt in pt_thresholds:
@@ -159,6 +182,13 @@ def define_jets_with_btagging_selection(samples, part_samples):
                 f"btagged_{btag_level}_jets_pt_above_{pt}_for_histo_pt.size()"
             )
 
+    return samples
+
+# Keep the old function for backward compatibility, but mark it as deprecated
+def define_jets_with_btagging_selection(samples, part_samples, plot_all_jets=False):
+    """DEPRECATED: Use define_jets_with_btagging_selection_for_filters and define_jets_with_btagging_selection_for_histos instead."""
+    samples = define_jets_with_btagging_selection_for_filters(samples, part_samples)
+    samples = define_jets_with_btagging_selection_for_histos(samples, part_samples, plot_all_jets)
     return samples
 
 def define_btagging_conditions(samples, ch):
@@ -221,6 +251,7 @@ def load_sorting_functions():
         auto indices = ROOT::VecOps::Argsort(pts, [](float a, float b) { return a > b; });
         ROOT::VecOps::RVec<T> result;
         for (int i = 0; i < std::min(n, (int)indices.size()); i++) {
+            //std::cout<< "Taking jet with pt: " << pts[indices[i]] << std::endl;                  
             result.push_back(values[indices[i]]);
         }
         return result;
@@ -285,10 +316,13 @@ def build_weight_string(k, files_names, options):
     """
     weight_terms = ['norm_weight']
 
+
     if options.compute_sfs or options.use_ntuples_with_sfs:
         print(f"[{k}] Applying scale factors")
         weight_terms.append('tot_sf_weight')
-        if 'TTT' in files_names.get(k, ''):
+
+        if 'TTT' in files_names.get(k, '') or 'BsToTauTau' in files_names.get(k, ''):
+            print(f"[{k}] Applying top pT reweighting")
             weight_terms.append('top_pt_weight')
 
     elif options.compute_btag_sfs or options.use_ntuples_with_btag_sfs:
@@ -296,3 +330,6 @@ def build_weight_string(k, files_names, options):
         weight_terms.extend(['tot_sf_weight', 'btag_event_weight']) #both SF and btagging SFs are applied
 
     return '*'.join(weight_terms)
+
+
+

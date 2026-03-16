@@ -7,14 +7,6 @@ def initialize_flavor_histograms(histos, samples, ch):
     """Initialize histograms categorized by jet flavor - MAXIMUM EFFICIENCY VERSION."""
     temp_hists = {}
     
-    # Define flavor categories based on hadronFlavour
-    flavor_categories = {
-        'b_jets': 'btagged_loose_jets_pt_above_20_for_histo_hadronFlavour == 5',
-        'c_jets': 'btagged_loose_jets_pt_above_20_for_histo_hadronFlavour == 4', 
-        'tau_jets': 'btagged_loose_jets_pt_above_20_for_histo_hadronFlavour == 15',
-        'other_jets': 'btagged_loose_jets_pt_above_20_for_histo_hadronFlavour != 5 && btagged_loose_jets_pt_above_20_for_histo_hadronFlavour != 4 && btagged_loose_jets_pt_above_20_for_histo_hadronFlavour != 15'
-    }
-    
     # Get all MC samples (excluding data and bstautau) once
     mc_samples = {kk: vv for kk, vv in samples[ch].items() if 'data' not in kk and 'bstautau' not in kk}
     data_samples = {kk: vv for kk, vv in samples[ch].items() if 'data' in kk}
@@ -25,6 +17,45 @@ def initialize_flavor_histograms(histos, samples, ch):
     
     for k, v in histos[ch].items():
         temp_hists[k] = {}
+        
+        # CRITICAL: Choose the correct hadronFlavour branch based on histogram name
+        if "_exclusive" in k:
+            # Extract tau type from histogram name for specific matching
+            if "Tauhtaumu" in k:
+                hadron_flavour_branch = "btagged_loose_jets_pt_above_20_for_histo_hadronFlavour_exclusive_tauhtaumu"
+            elif "Tauhtaue" in k:
+                hadron_flavour_branch = "btagged_loose_jets_pt_above_20_for_histo_hadronFlavour_exclusive_tauhtaue"
+            elif "Tauhtauh" in k:
+                hadron_flavour_branch = "btagged_loose_jets_pt_above_20_for_histo_hadronFlavour_exclusive_tauhtauh"
+            else:
+                # Fallback to general exclusive
+                hadron_flavour_branch = "btagged_loose_jets_pt_above_20_for_histo_hadronFlavour_exclusive"
+            print(f"Using exclusive cut hadronFlavour branch for {k}: {hadron_flavour_branch}")
+        
+        elif "_onlytaumucut" in k:
+            # Extract tau type from histogram name for specific matching
+            if "Tauhtaumu" in k:
+                hadron_flavour_branch = "btagged_loose_jets_pt_above_20_for_histo_hadronFlavour_onlytaumucut_tauhtaumu"
+            elif "Tauhtaue" in k:
+                hadron_flavour_branch = "btagged_loose_jets_pt_above_20_for_histo_hadronFlavour_onlytaumucut_tauhtaue"
+            elif "Tauhtauh" in k:
+                hadron_flavour_branch = "btagged_loose_jets_pt_above_20_for_histo_hadronFlavour_onlytaumucut_tauhtauh"
+            else:
+                # Fallback to general onlytaumucut
+                hadron_flavour_branch = "btagged_loose_jets_pt_above_20_for_histo_hadronFlavour_onlytaumucut"
+            print(f"Using onlytaumucut hadronFlavour branch for {k}: {hadron_flavour_branch}")
+        
+        else:
+            # For regular histograms, use the regular hadronFlavour branch
+            hadron_flavour_branch = "btagged_loose_jets_pt_above_20_for_histo_hadronFlavour"
+        
+        # Define flavor categories based on the appropriate hadronFlavour branch
+        flavor_categories = {
+            'b_jets': f'{hadron_flavour_branch} == 5',
+            'c_jets': f'{hadron_flavour_branch} == 4', 
+            'tau_jets': f'{hadron_flavour_branch} == 15',
+            'other_jets': f'{hadron_flavour_branch} != 5 && {hadron_flavour_branch} != 4 && {hadron_flavour_branch} != 15'
+        }
         
         # Create all flavor branches once per sample, then make all histograms
         enhanced_samples = {}
@@ -84,7 +115,6 @@ def compute_and_combine_flavor_histograms(temp_hists, k):
     return temp_hists[k]
 
 def get_flavor_colors():
-
     """Define colors for different jet flavors."""
     return {
         'b_jets': ROOT.kRed,
@@ -120,16 +150,15 @@ def create_flavor_legend(temp_hists, ch):
     flavor_titles = get_flavor_titles()
     k = list(temp_hists.keys())[0]
     
-    # Add flavor entries - now the histograms should be actual histogram objects
+    # Add flavor entries
     for flavor in ['b_jets', 'c_jets', 'tau_jets', 'other_jets']:
         if f'{k}_{flavor}' in temp_hists[k].keys():
             hist_obj = temp_hists[k][f'{k}_{flavor}']
-            # Make sure it's a histogram object, not a dictionary
             if hasattr(hist_obj, 'GetValue'):
                 hist_obj = hist_obj.GetValue()
             leg.AddEntry(hist_obj, flavor_titles[flavor], 'F')
 
-    # Add single data entry
+    # Add data entry
     if f'{k}_data' in temp_hists[k].keys():
         hist_obj = temp_hists[k][f'{k}_data']
         if hasattr(hist_obj, 'GetValue'):
@@ -147,32 +176,36 @@ def create_flavor_legend(temp_hists, ch):
     return leg
 
 def style_flavor_histograms(temp_hists, k, v):
-    """Style histograms for flavor categorization - AFTER COMPUTATION."""
+    """Style histograms for flavor categorization."""
     flavor_colors = get_flavor_colors()
     
     for key, ihist in temp_hists[k].items():
         flavor_name = key.replace(f"{k}_", "")
-        is_data = 'data' in flavor_name
-        
-        # At this point, all histograms should be actual histogram objects
         color = flavor_colors.get(flavor_name.replace('_masked', ''), ROOT.kBlack)
         set_histogram_style(ihist, v[1], 'events', color, color)
 
 def calculate_flavor_maximum(temp_hists, k):
     """Calculate the maximum Y value considering all scenarios including scaled BsTauTau."""
-    maxima, maxima_data = [], []
+    temp_stack = ROOT.THStack('temp_stack', '')
+    maxima_data = []
     
-    # Get maxima from flavor histograms and data
+    # Build the stack
+    for flavor in ['b_jets', 'c_jets', 'tau_jets', 'other_jets']:
+        key = f'{k}_{flavor}'
+        if key in temp_hists[k]:
+            temp_stack.Add(temp_hists[k][key])
+    
+    # Get mc_max from the stacked histogram
+    if temp_stack.GetStack() and temp_stack.GetStack().Last():
+        mc_max = temp_stack.GetStack().Last().GetMaximum()
+    else:
+        mc_max = 1
+    
+    # Get data maximum
     for key, ihist in temp_hists[k].items():
-        flavor_name = key.replace(f"{k}_", "")
-        is_data = 'data' in flavor_name
-        
-        if not is_data and 'bstautau' not in flavor_name:
-            maxima.append(ihist.GetMaximum())
-        elif is_data:
+        if 'data' in key.replace(f"{k}_", ""):
             maxima_data.append(ihist.GetMaximum())
     
-    mc_max = max(maxima) if maxima else 1
     data_max = max(maxima_data) if maxima_data else 1
     
     # For BsTauTau plots, calculate max considering both scaled and unscaled versions
@@ -189,80 +222,54 @@ def calculate_flavor_maximum(temp_hists, k):
         
         bstautau_unscaled_max = bstautau_hist.GetMaximum()
         
-        # Calculate what the scaled max would be (using total MC as reference)
-        if maxima:
-            total_mc_integral = sum(hist.Integral() for hist in [temp_hists[k][f'{k}_{flavor}'] for flavor in ['b_jets', 'c_jets', 'tau_jets', 'other_jets'] if f'{k}_{flavor}' in temp_hists[k]])
-            scale_factor = total_mc_integral / bstautau_hist.Integral() if bstautau_hist.Integral() > 0 else 1
+        # Calculate scaled maximum
+        if temp_stack.GetStack() and temp_stack.GetStack().Last():
+            mc_integral = temp_stack.GetStack().Last().Integral()
+            scale_factor = mc_integral / bstautau_hist.Integral() if bstautau_hist.Integral() > 0 else 1
             bstautau_scaled_max = bstautau_unscaled_max * scale_factor
         else:
             bstautau_scaled_max = bstautau_unscaled_max
         
-        # Use the maximum of all scenarios
-        desired_max = 1.6 * max(mc_max, data_max, bstautau_unscaled_max, bstautau_scaled_max)
+        desired_max = 1.4 * max(mc_max, data_max, bstautau_unscaled_max, bstautau_scaled_max)
     else:
-        desired_max = 1.6 * max(mc_max, data_max)
+        desired_max = 1.4 * max(mc_max, data_max)
     
     return desired_max
 
 def create_flavor_histogram_stacks(temp_hists, k, desired_max, blinding):
-    """Create histogram stacks for flavor-based histograms - OPTIMIZED VERSION."""
+    """Create histogram stacks for flavor-based histograms."""
     ths1 = ROOT.THStack('flavor_stack', '')
     data_ths = ROOT.THStack('data_stack', '')
-    
+
     # Add flavor histograms to stack
     for flavor in ['b_jets', 'c_jets', 'tau_jets', 'other_jets']:
         key = f'{k}_{flavor}'
         if key in temp_hists[k]:
             ihist = temp_hists[k][key]
-            # At this point it should already be a histogram, not a lazy object
             ihist.SetMaximum(desired_max)
             ths1.Add(ihist)
-    
+
     ths1.SetMaximum(desired_max)
     ths1.SetMinimum(0.0001)
     
     # Add data histograms
-    for key, ihist in temp_hists[k].items():
-        if 'data' not in key:
-            continue
-        if hasattr(ihist, 'GetValue'):
-            ihist = ihist.GetValue()
-        
-        # Apply blinding to data histograms for ParTRaw plots
-        if should_apply_blinding(k) and blinding :
-            apply_data_blinding_to_histogram(ihist, k)
-        
-        ihist.SetLineWidth(2)
-        ihist.SetMarkerStyle(20)
-        data_ths.Add(ihist)
-    
+    # Only plot data if not fully blinded
+    if not k.startswith("btagged_loose_jets_pt_above_20_for_histo_jet_mass_exclusive_"):
+        for key, ihist in temp_hists[k].items():
+            if 'data' not in key:
+                continue
+            if hasattr(ihist, 'GetValue'):
+                original_hist = ihist.GetValue()
+            else:
+                original_hist = ihist
+            display_hist = original_hist.Clone(f"{key}_display_flavor")
+            if should_apply_blinding(k) and blinding:
+                apply_data_blinding_to_histogram(display_hist, k)
+            display_hist.SetLineWidth(2)
+            display_hist.SetMarkerStyle(20)
+            data_ths.Add(display_hist)
+    ths1.Draw('hist')
     return ths1, data_ths
-
-def style_and_draw_bstautau(temp_hists, k, ths1, colours):
-    """Handle bstautau histogram styling with proper error checking."""
-    bstautau_key = None
-    for key in temp_hists[k].keys():
-        if 'bstautau' in key:
-            bstautau_key = key
-            break
-    
-    if bstautau_key and ths1.GetStack() and ths1.GetStack().Last():
-        hist = temp_hists[k][bstautau_key]
-        if hasattr(hist, 'GetValue'):
-            hist = hist.GetValue()
-        
-        hist.SetFillColor(0)
-        hist.SetLineColor(colours['bstautau'])
-        hist.SetMarkerColor(colours['bstautau'])
-        
-        data_integral = ths1.GetStack().Last().Integral()
-        bstautau_integral = hist.Integral()
-        
-        if bstautau_integral > 0:
-            scale_factor = data_integral / bstautau_integral
-            hist.Scale(scale_factor)
-            hist.Draw("hist same")
-            hist.Draw("EP same")
 
 def style_and_draw_bstautau_flavor(temp_hists, k, ths1, colours, scale_to_mc=True):
     """Handle bstautau histogram styling with proper scaling control for flavor plots."""
@@ -272,31 +279,28 @@ def style_and_draw_bstautau_flavor(temp_hists, k, ths1, colours, scale_to_mc=Tru
             bstautau_key = key
             break
     
-    if bstautau_key and ths1.GetStack() and ths1.GetStack().Last():
+    if bstautau_key:
         hist = temp_hists[k][bstautau_key]
         hist.SetFillColor(0)
         hist.SetLineColor(colours['bstautau'])
         hist.SetMarkerColor(colours['bstautau'])
-        #print("BsTauTau histogram integral:", hist.Integral(),k)
         
         if scale_to_mc:
-            scale_factor = ths1.GetStack().Last().Integral() / hist.Integral() if hist.Integral() > 0 else 1
-            hist.Scale(scale_factor)
-            #print(f"Scaled BsTauTau histogram for total of {hist.Integral()}")
+            if ths1.GetStack() and ths1.GetStack().Last() and hist.Integral() > 0:
+                mc_integral = ths1.GetStack().Last().Integral()
+                scale_factor = mc_integral / hist.Integral()
+                hist.Scale(scale_factor)
 
         hist.Draw("hist same")
         hist.Draw("EP same")
 
 def save_flavor_plot_versions(c1, label, ch, k, main_pad, scale_suffix=""):
-    """
-    Save flavor plots in multiple formats and versions with new directory structure.
-    """
+    """Save flavor plots in multiple formats and versions."""
     if scale_suffix == "_scaled":
         base_path = f'plots/{label}/{ch}/flavor_based/bstautau_scaled'
     elif scale_suffix == "_unscaled":
         base_path = f'plots/{label}/{ch}/flavor_based/bstautau_not_scaled'
     else:
-        # For plots without BsTauTau, use scaled path as default
         base_path = f'plots/{label}/{ch}/flavor_based/bstautau_scaled'
     
     # Linear version
@@ -304,16 +308,16 @@ def save_flavor_plot_versions(c1, label, ch, k, main_pad, scale_suffix=""):
     c1.Modified()
     c1.Update()
     
-    # Save linear versions in all formats
+    # Save linear versions
     c1.SaveAs(f'{base_path}/lin/pdf/{k}_flavor.pdf')
     c1.SaveAs(f'{base_path}/lin/png/{k}_flavor.png')
     c1.SaveAs(f'{base_path}/lin/C/{k}_flavor.C')
     c1.SaveAs(f'{base_path}/lin/root/{k}_flavor.root')
     
-    # Log version - need to adjust maximum to avoid overlap with legend
+    # Log version
     main_pad.SetLogy(True)
     
-    # Get all drawable objects from the main pad to find the maximum
+    # Get maximum and set for log scale
     current_max = 0
     pad_primitives = main_pad.GetListOfPrimitives()
     for obj in pad_primitives:
@@ -322,12 +326,10 @@ def save_flavor_plot_versions(c1, label, ch, k, main_pad, scale_suffix=""):
             if obj_max > current_max:
                 current_max = obj_max
         elif hasattr(obj, 'GetStack') and obj.GetStack():
-            # For THStack objects
             stack_max = obj.GetStack().Last().GetMaximum()
             if stack_max > current_max:
                 current_max = stack_max
     
-    # Set maximum to 1000 times the current maximum for log scale
     log_max = current_max * 1000
     for obj in pad_primitives:
         if hasattr(obj, 'SetMaximum'):
@@ -336,13 +338,13 @@ def save_flavor_plot_versions(c1, label, ch, k, main_pad, scale_suffix=""):
     c1.Modified()
     c1.Update()
     
-    # Save log versions in all formats
+    # Save log versions
     c1.SaveAs(f'{base_path}/log/pdf/{k}_flavor.pdf')
     c1.SaveAs(f'{base_path}/log/png/{k}_flavor.png')
     c1.SaveAs(f'{base_path}/log/C/{k}_flavor.C')
     c1.SaveAs(f'{base_path}/log/root/{k}_flavor.root')
     
-    # Reset to linear for consistency and restore original maximum
+    # Reset to linear
     main_pad.SetLogy(False)
     for obj in pad_primitives:
         if hasattr(obj, 'SetMaximum'):
@@ -352,54 +354,54 @@ def save_flavor_plot_versions(c1, label, ch, k, main_pad, scale_suffix=""):
     c1.Update()
 
 def process_flavor_histograms(histos, temp_hists, ch, label, main_pad, ratio_pad, c1, colours, blinding):
-    """Process and save flavor-based histograms - OPTIMIZED."""
+    """Process and save flavor-based histograms."""
     
-    # Create ROOT file for saving flavor histograms with compression
+    # Create ROOT file for saving flavor histograms
     root_file_path = f'plots/{label}/histograms_flavor.root'
-    root_file = ROOT.TFile(root_file_path, 'UPDATE', "", ROOT.kLZMA)  # Use LZMA compression
-    root_file.SetCompressionLevel(1)  # Fast compression
+    root_file = ROOT.TFile(root_file_path, 'UPDATE', "", ROOT.kLZMA)
+    root_file.SetCompressionLevel(1)
     print(f"Created flavor ROOT file: {root_file_path}")
     
     # Create channel folder in ROOT file
     channel_folder = root_file.mkdir(ch)
     
-    # Pre-compute all histograms at once to minimize RDataFrame overhead
+    # Pre-compute all histograms
     print(f"Computing all flavor histograms for channel {ch}...")
     computed_histos = {}
     for k, v in histos[ch].items():
         computed_histos[k] = compute_and_combine_flavor_histograms(temp_hists, k)
     
-    # Now process each histogram for plotting
+    # Process each histogram for plotting
     for i, (k, v) in enumerate(histos[ch].items()):
         
         c1.cd()
         main_pad.cd()
         main_pad.SetLogy(False)
         
-        # Style histograms - now they are all pre-computed
+        # Style histograms
         style_flavor_histograms(temp_hists, k, v)
         
-        # Calculate maximum considering all scenarios
+        # Calculate maximum
         desired_max = calculate_flavor_maximum(temp_hists, k)
         
-        # Create legend after histograms are computed
+        # Create legend
         leg = create_flavor_legend(temp_hists, ch)
         
         ths1, data_ths = create_flavor_histogram_stacks(temp_hists, k, desired_max, blinding)
         
-        # Get X-axis range from the histogram
+        # Get X-axis range
         x_min = ths1.GetXaxis().GetXmin() if ths1.GetStack() and ths1.GetStack().Last() else 0
         x_max = ths1.GetXaxis().GetXmax() if ths1.GetStack() and ths1.GetStack().Last() else 1
         
         # Clear and draw with fixed Y-axis range
         main_pad.Clear()
         
-        # Draw frame with desired Y-axis range
+        # Draw frame
         frame = main_pad.DrawFrame(x_min, 0.0001, x_max, desired_max)
         frame.GetXaxis().SetTitle(v[1])
         frame.GetYaxis().SetTitle('events')
         
-        # Draw histogram on top of the fixed frame
+        # Draw histogram
         ths1.Draw('hist same')
 
         stats = draw_stat(ths1)
@@ -416,7 +418,7 @@ def process_flavor_histograms(histos, temp_hists, ch, label, main_pad, ratio_pad
 
         # IMPORTANT: Plot unscaled version FIRST, then scaled version
         
-        # Version 1: BsTauTau at original scale (not scaled to data) - PLOT FIRST
+        # Version 1: BsTauTau at original scale (not scaled to MC) - PLOT FIRST
         if any('bstautau' in key for key in temp_hists[k].keys()):
             style_and_draw_bstautau_flavor(temp_hists, k, ths1, colours, scale_to_mc=False)
 
@@ -486,16 +488,9 @@ def process_flavor_histograms(histos, temp_hists, ch, label, main_pad, ratio_pad
 
 def save_flavor_histograms_to_root_file(channel_folder, histogram_name, ths1, data_ths, temp_hists):
     """
-    Save flavor-based histograms to ROOT file with proper folder structure.
-    
-    Args:
-        channel_folder: ROOT directory for the channel
-        histogram_name: Name of the histogram (k)
-        ths1: Flavor stack (combined b, c, tau, other jets)
-        data_ths: Data stack
-        temp_hists: Dictionary containing all histograms
+    Save flavor-based histograms to ROOT file.
+    CRITICAL: Always saves ORIGINAL UNBLINDED data for fitting purposes.
     """
-    # Create subfolder for this histogram
     histo_folder = channel_folder.mkdir(histogram_name)
     histo_folder.cd()
     
@@ -504,10 +499,17 @@ def save_flavor_histograms_to_root_file(channel_folder, histogram_name, ths1, da
         flavor_total = ths1.GetStack().Last().Clone(f"{histogram_name}_flavor_total")
         flavor_total.Write("ths1")
     
-    # Save data
-    if data_ths.GetStack() and data_ths.GetStack().Last():
-        data_hist = data_ths.GetStack().Last().Clone(f"{histogram_name}_data")
-        data_hist.Write("data")
+    # CRITICAL: Save ORIGINAL UNBLINDED data from temp_hists, NOT from data_ths
+    original_data_saved = False
+    
+    # Only save data if not fully blinded
+    if not histogram_name.startswith("btagged_loose_jets_pt_above_20_for_histo_m_exclusive_"):
+        data_hist = data_ths.GetStack().Last().Clone(f"{histogram_name}_data_original")
+        data_hist.Write("data_obs")  # Use ROOT-friendly name for fitting
+        original_data_saved = True
+    
+    if not original_data_saved:
+        print(f"WARNING: No original data histogram found for flavor plot {histogram_name}")
     
     # Save bstautau signal if present
     if f'{histogram_name}_bstautau' in temp_hists[histogram_name]:
@@ -521,12 +523,3 @@ def save_flavor_histograms_to_root_file(channel_folder, histogram_name, ths1, da
         if key in temp_hists[histogram_name]:
             flavor_hist = temp_hists[histogram_name][key].Clone(f"{histogram_name}_{flavor}")
             flavor_hist.Write(flavor)
-        if key in temp_hists[histogram_name]:
-            flavor_hist = temp_hists[histogram_name][key].Clone(f"{histogram_name}_{flavor}")
-            flavor_hist.Write(flavor)
-            flavor_hist = temp_hists[histogram_name][key].Clone(f"{histogram_name}_{flavor}")
-            flavor_hist.Write(flavor)
-        if key in temp_hists[histogram_name]:
-            flavor_hist = temp_hists[histogram_name][key].Clone(f"{histogram_name}_{flavor}")
-            flavor_hist.Write(flavor)
-
