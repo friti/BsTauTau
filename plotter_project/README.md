@@ -37,7 +37,9 @@ Scale Factors arguments:
 ## Sequence to compute SFs:
 
 `python3 main.py --channels 'emu','mumu','ee','e','mu' --compute_sfs`
+
 `python3 main.py --channels 'emu','mumu','ee','e','mu' --compute_btag_sfs --use_ntuples_with_sfs`
+
 `python3 main.py --channels 'emu','mumu','ee','e','mu' --use_ntuples_with_btag_sfs --make_histos` --> final plots with all the corrections
 
 
